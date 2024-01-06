@@ -1,0 +1,122 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id                String    @id @default(cuid())
+  clerkId           String    @unique
+  email             String    @unique
+  name              String?
+  imageUrl          String?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  resumes           Resume[]
+  interviews        Interview[]
+  progressMetrics   ProgressMetric[]
+  feedback          Feedback[]
+  preferences       UserPreference?
+}
+
+model UserPreference {
+  id                String    @id @default(cuid())
+  userId            String    @unique
+  user              User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  theme             String    @default("light")
+  emailNotifications Boolean  @default(true)
+  interviewDifficulty String  @default("medium")
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+}
+
+model Resume {
+  id                String    @id @default(cuid())
+  userId            String
+  user              User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title             String
+  content           String    @db.Text
+  originalFileName  String
+  fileUrl           String?
+  version           Int       @default(1)
+  analysisScore     Float?
+  analysisData      Json?     // Store AI analysis results
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  tailoringSessions TailoringSession[]
+  feedback          Feedback[]
+}
+
+model TailoringSession {
+  id                String    @id @default(cuid())
+  resumeId          String
+  resume            Resume    @relation(fields: [resumeId], references: [id], onDelete: Cascade)
+  jobDescription    String    @db.Text
+  jobTitle          String?
+  company           String?
+  tailoredContent   String    @db.Text
+  matchScore        Float?
+  suggestions       Json?
+  createdAt         DateTime  @default(now())
+}
+
+model Interview {
+  id                String    @id @default(cuid())
+  userId            String
+  user              User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type              String    // "text" or "voice"
+  status            String    @default("started") // started, completed, abandoned
+  role              String?
+  experienceLevel   String?
+  questions         Json?     // Array of questions asked
+  answers           Json?     // Array of answers given
+  overallScore      Float?
+  feedback          Json?     // AI feedback summary
+  duration          Int?      // in seconds
+  createdAt         DateTime  @default(now())
+  completedAt       DateTime?
+
+  feedbackDetails   InterviewFeedback[]
+}
+
+model InterviewFeedback {
+  id                String    @id @default(cuid())
+  interviewId       String
+  interview         Interview @relation(fields: [interviewId], references: [id], onDelete: Cascade)
+  questionIndex     Int
+  question          String    @db.Text
+  answer            String    @db.Text
+  score             Float
+  clarity           Float?
+  confidence        Float?
+  relevance         Float?
+  suggestions       String    @db.Text
+  createdAt         DateTime  @default(now())
+}
+
+model ProgressMetric {
+  id                String    @id @default(cuid())
+  userId            String
+  user              User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  metricType        String    // resume_score, interview_score, skills_gained
+  value             Float
+  metadata          Json?
+  recordedAt        DateTime  @default(now())
+}
+
+model Feedback {
+  id                String    @id @default(cuid())
+  userId            String
+  user              User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  resumeId          String?
+  resume            Resume?   @relation(fields: [resumeId], references: [id])
+  type              String    // resume, interview, general
+  content           String    @db.Text
+  rating            Int?      // 1-5
+  createdAt         DateTime  @default(now())
+}
