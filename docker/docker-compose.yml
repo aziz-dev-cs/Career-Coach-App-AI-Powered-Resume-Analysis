@@ -1,0 +1,144 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: career-coach-postgres
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres123
+      POSTGRES_DB: career_coach
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - career-coach-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: career-coach-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - career-coach-network
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: development
+    container_name: career-coach-app
+    ports:
+      - "3000:3000"
+    environment:
+      - DATABASE_URL=postgresql://postgres:postgres123@postgres:5432/career_coach?schema=public
+      - REDIS_URL=redis://redis:6379
+      - NODE_ENV=development
+      - NEXT_PUBLIC_APP_URL=http://localhost:3000
+    volumes:
+      - .:/app
+      - /app/node_modules
+      - /app/.next
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - career-coach-network
+    command: sh -c "npx prisma migrate deploy && npm run dev"
+
+  # Production build (uncomment to use)
+  # app-production:
+  #   build:
+  #     context: .
+  #     dockerfile: Dockerfile
+  #     target: production
+  #   container_name: career-coach-app-prod
+  #   ports:
+  #     - "3000:3000"
+  #   environment:
+  #     - DATABASE_URL=postgresql://postgres:postgres123@postgres:5432/career_coach?schema=public
+  #     - REDIS_URL=redis://redis:6379
+  #     - NODE_ENV=production
+  #     - NEXT_PUBLIC_APP_URL=https://yourdomain.com
+  #   depends_on:
+  #     postgres:
+  #       condition: service_healthy
+  #     redis:
+  #       condition: service_healthy
+  #   networks:
+  #     - career-coach-network
+  #   restart: unless-stopped
+
+  # Optional: LocalAI for offline LLM support
+  localai:
+    image: quay.io/go-skynet/local-ai:latest
+    container_name: career-coach-localai
+    ports:
+      - "8080:8080"
+    volumes:
+      - localai_models:/models
+    environment:
+      - DEBUG=true
+      - THREADS=4
+      - CONTEXT_SIZE=512
+    networks:
+      - career-coach-network
+    command: ["/usr/bin/local-ai"]
+    profiles:
+      - local-ai
+
+  # Optional: PGAdmin for database management
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: career-coach-pgadmin
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@careercoach.com
+      PGADMIN_DEFAULT_PASSWORD: admin123
+    ports:
+      - "5050:80"
+    depends_on:
+      - postgres
+    networks:
+      - career-coach-network
+    profiles:
+      - tools
+
+  # Optional: Redis Commander for Redis UI
+  redis-commander:
+    image: rediscommander/redis-commander:latest
+    container_name: career-coach-redis-commander
+    environment:
+      - REDIS_HOSTS=local:redis:6379
+    ports:
+      - "8081:8081"
+    depends_on:
+      - redis
+    networks:
+      - career-coach-network
+    profiles:
+      - tools
+
+networks:
+  career-coach-network:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  redis_data:
+  localai_models:
